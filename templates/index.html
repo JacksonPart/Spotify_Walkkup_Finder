@@ -1,0 +1,25 @@
+{% extends "layout.html" %}
+
+{% block title %}Walk-Up Song Finder{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="eyebrow">Baseball + Spotify</div>
+  <h1>Find Your Walk-Up Song</h1>
+  <p>
+    Connect your Spotify account and we'll analyze your listening habits to find
+    the perfect song for when you step up to the plate.
+  </p>
+
+  {% if error %}
+  <div class="error-msg">{{ error }}</div>
+  {% endif %}
+
+  <a href="/login" class="btn">Connect with Spotify</a>
+
+  <hr class="divider">
+  <p style="font-size: 0.8rem; color: #555; margin: 0;">
+    We only read your listening data. We never modify your Spotify account.
+  </p>
+</div>
+{% endblock %}
