@@ -4,7 +4,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from spotipy.cache_handler import FlaskSessionCacheHandler
 from dotenv import load_dotenv
-from spotify_analyzer import analyze_walkup_song, get_top_genres, GENRE_DISPLAY_NAMES
+from spotify_analyzer import analyze_walkup_song, get_top_genres, get_debug_data, GENRE_DISPLAY_NAMES
 from mlb_teams import MLB_TEAMS, logo_url
 
 load_dotenv()
@@ -89,6 +89,19 @@ def analyze():
         return render_template("index.html", error=result["error"])
 
     return render_template("result.html", result=result)
+
+
+@app.route("/debug")
+def debug():
+    if "token_info" not in session:
+        return redirect(url_for("index"))
+    sp = get_sp()
+    if not sp:
+        return redirect(url_for("login"))
+    data = get_debug_data(sp)
+    if not data:
+        return render_template("index.html", error="Could not load debug data.")
+    return render_template("debug.html", data=data)
 
 
 if __name__ == "__main__":

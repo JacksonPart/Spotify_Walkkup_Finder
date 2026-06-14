@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Score Breakdown</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d0d0d;
+      color: #f0f0f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 2rem 1.5rem;
+    }
+    h1 { font-size: 1.5rem; font-weight: 800; margin-bottom: 0.35rem; }
+    .subtitle { color: #555; font-size: 0.82rem; margin-bottom: 2.5rem; }
+
+    .section-title {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #1DB954;
+      margin-bottom: 1rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid #1e1e1e;
+    }
+
+    /* Vibe / genre cards */
+    .cards-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 0.875rem;
+      margin-bottom: 2.5rem;
+    }
+    .card {
+      background: #151515;
+      border: 1px solid #242424;
+      border-radius: 14px;
+      padding: 1.1rem;
+    }
+    .card-label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #444;
+      margin-bottom: 0.8rem;
+    }
+    .genre-tag {
+      display: inline-block;
+      background: rgba(29,185,84,0.1);
+      color: #1DB954;
+      border-radius: 50px;
+      padding: 0.18rem 0.6rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      margin-bottom: 0.8rem;
+    }
+
+    /* Podium rows */
+    .podium { display: flex; flex-direction: column; gap: 0.4rem; }
+    .podium-row {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      min-width: 0;
+    }
+    .badge {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      font-size: 0.62rem;
+      font-weight: 800;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .b1 { background: #1DB954; color: #000; }
+    .b2 { background: #2a2a2a; color: #aaa; }
+    .b3 { background: #1c1c1c; color: #555; }
+    .podium-text { min-width: 0; flex: 1; }
+    .p-name {
+      font-size: 0.82rem; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .p-sub {
+      font-size: 0.7rem; color: #555;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .p-score { font-size: 0.7rem; color: #383838; flex-shrink: 0; }
+
+    /* Table */
+    .table-note { font-size: 0.75rem; color: #3a3a3a; margin-bottom: 0.75rem; }
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid #1e1e1e;
+      border-radius: 12px;
+      margin-bottom: 3rem;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.78rem; min-width: 860px; }
+    thead th {
+      background: #111;
+      padding: 0.65rem 0.8rem;
+      text-align: left;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #444;
+      white-space: nowrap;
+      border-bottom: 1px solid #1e1e1e;
+    }
+    thead th.sc { color: #1DB954; }
+    tbody tr { border-bottom: 1px solid #181818; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #141414; }
+    tbody tr.dim { opacity: 0.3; }
+    td { padding: 0.6rem 0.8rem; vertical-align: middle; white-space: nowrap; }
+
+    .t-name { font-weight: 600; }
+    .t-artist { color: #555; }
+
+    .range-pill {
+      display: inline-block;
+      padding: 0.12rem 0.45rem;
+      border-radius: 4px;
+      font-size: 0.62rem;
+      font-weight: 700;
+    }
+    .rp-s { background: rgba(29,185,84,0.12); color: #1DB954; }
+    .rp-m { background: rgba(200,160,0,0.1);  color: #a07800; }
+    .rp-l { background: rgba(80,80,80,0.15);  color: #555; }
+
+    .bar-cell { min-width: 72px; }
+    .bar-row { display: flex; align-items: center; gap: 0.35rem; }
+    .bar-bg  { flex: 1; height: 3px; background: #222; border-radius: 2px; overflow: hidden; }
+    .bar-g   { height: 100%; border-radius: 2px; background: #1DB954; }
+    .bar-p   { height: 100%; border-radius: 2px; background: #8b5cf6; }
+    .bar-d   { height: 100%; border-radius: 2px; background: #f59e0b; }
+    .bar-n   { font-size: 0.68rem; color: #444; width: 26px; text-align: right; }
+
+    .sv { font-weight: 700; color: #3a3a3a; }
+    .sv.hi { color: #1DB954; }
+
+    .gp {
+      display: inline-block;
+      background: #1c1c1c; color: #555;
+      border-radius: 3px; padding: 0.08rem 0.3rem;
+      font-size: 0.62rem; margin: 1px;
+    }
+
+    footer { font-size: 0.7rem; color: #2a2a2a; text-align: center; padding-bottom: 2rem; }
+  </style>
+</head>
+<body>
+
+<h1>Score Breakdown</h1>
+<p class="subtitle">Your Spotify data scored across every mode. Dimmed rows are filtered (under 85 BPM or 40% energy).</p>
+
+<!-- Top 3 by vibe -->
+<div class="section-title">Top 3 by Mode</div>
+<div class="cards-row">
+  {% for section in data.vibe_sections %}
+  <div class="card">
+    <div class="card-label">{{ section.label }}</div>
+    <div class="podium">
+      {% for t in section.top3 %}
+      <div class="podium-row">
+        <div class="badge b{{ t.rank }}">{{ t.rank }}</div>
+        <div class="podium-text">
+          <div class="p-name">{{ t.name }}</div>
+          <div class="p-sub">{{ t.artist }} &middot; {{ t.energy }}% &middot; {{ t.tempo }} BPM</div>
+        </div>
+        <div class="p-score">{{ t.scores[section.key] }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Genre effect -->
+{% if data.genre_sections %}
+<div class="section-title">How Genre Preference Shifts Auto Rankings</div>
+<div class="cards-row">
+  {% for section in data.genre_sections %}
+  <div class="card">
+    <div class="genre-tag">{{ section.label }}</div>
+    <div class="podium">
+      {% for t in section.top3 %}
+      <div class="podium-row">
+        <div class="badge b{{ t.rank }}">{{ t.rank }}</div>
+        <div class="podium-text">
+          <div class="p-name">{{ t.name }}</div>
+          <div class="p-sub">{{ t.artist }}{% if section.key in t.genres %} &middot; genre match{% endif %}</div>
+        </div>
+        <div class="p-score">{{ t.scores["genre_" + section.key] }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Full table -->
+<div class="section-title">Full Track Data</div>
+<p class="table-note">Score = audio weights x time multiplier (Recent = 3x, 6 mo = 2x, All time = 1x). Green = winner in that column.</p>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Track</th>
+        <th>Artist</th>
+        <th>Range</th>
+        <th>Energy</th>
+        <th>BPM</th>
+        <th>Valence</th>
+        <th>Dance</th>
+        <th>Pop</th>
+        <th>Genres</th>
+        <th class="sc">Auto</th>
+        <th class="sc">Intimidator</th>
+        <th class="sc">Crowd</th>
+        <th class="sc">Closer</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in data.sorted_tracks %}
+      <tr{% if t.filtered %} class="dim"{% endif %}>
+        <td class="t-name">{{ t.name }}</td>
+        <td class="t-artist">{{ t.artist }}</td>
+        <td>
+          {% if t.time_range == "short_term" %}
+            <span class="range-pill rp-s">Recent</span>
+          {% elif t.time_range == "medium_term" %}
+            <span class="range-pill rp-m">6 mo</span>
+          {% else %}
+            <span class="range-pill rp-l">All time</span>
+          {% endif %}
+        </td>
+        <td class="bar-cell">
+          <div class="bar-row">
+            <div class="bar-bg"><div class="bar-g" style="width:{{ t.energy }}%"></div></div>
+            <span class="bar-n">{{ t.energy }}%</span>
+          </div>
+        </td>
+        <td>{{ t.tempo if t.tempo is not none else "--" }}</td>
+        <td class="bar-cell">
+          {% if t.valence is not none %}
+          <div class="bar-row">
+            <div class="bar-bg"><div class="bar-p" style="width:{{ t.valence }}%"></div></div>
+            <span class="bar-n">{{ t.valence }}%</span>
+          </div>
+          {% else %}<span style="color:#333">--</span>{% endif %}
+        </td>
+        <td class="bar-cell">
+          {% if t.danceability is not none %}
+          <div class="bar-row">
+            <div class="bar-bg"><div class="bar-d" style="width:{{ t.danceability }}%"></div></div>
+            <span class="bar-n">{{ t.danceability }}%</span>
+          </div>
+          {% else %}<span style="color:#333">--</span>{% endif %}
+        </td>
+        <td>{{ t.popularity }}</td>
+        <td>{% for g in t.genres %}<span class="gp">{{ g }}</span>{% endfor %}</td>
+        <td><span class="sv{% if t.scores.auto == data.max_scores.auto %} hi{% endif %}">{{ t.scores.auto }}</span></td>
+        <td><span class="sv{% if t.scores.intimidator == data.max_scores.intimidator %} hi{% endif %}">{{ t.scores.intimidator }}</span></td>
+        <td><span class="sv{% if t.scores.crowd_pleaser == data.max_scores.crowd_pleaser %} hi{% endif %}">{{ t.scores.crowd_pleaser }}</span></td>
+        <td><span class="sv{% if t.scores.closer == data.max_scores.closer %} hi{% endif %}">{{ t.scores.closer }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<footer>Walk-Up Song Finder - debug view</footer>
+</body>
+</html>
