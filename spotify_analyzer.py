@@ -1,8 +1,42 @@
 import os
+import time
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
+from spotipy.exceptions import SpotifyException
 from mlb_teams import TEAMS_BY_ID
 from deezer_lookup import enrich_tracks, tempo_norm as deezer_tempo_norm
+
+# User-facing messages for each HTTP status the Spotify API can return
+_SPOTIFY_ERRORS = {
+    401: "Your Spotify session expired. Please reconnect your account.",
+    403: "Spotify denied access. Please reconnect your account.",
+    404: "That Spotify resource was not found.",
+    429: "Spotify is rate-limiting the app right now. Please wait a moment and try again.",
+    500: "Spotify is having server issues. Try again in a minute.",
+    502: "Spotify is having server issues. Try again in a minute.",
+    503: "Spotify is temporarily unavailable. Try again in a minute.",
+}
+
+
+def _spotify_call(fn, *args, max_retries=3, **kwargs):
+    """
+    Call a spotipy method with exponential backoff on HTTP 429.
+    Respects the Retry-After header when present.
+    Raises SpotifyException unchanged for all other error codes so callers
+    can decide whether to surface the error or degrade gracefully.
+    """
+    for attempt in range(max_retries):
+        try:
+            return fn(*args, **kwargs)
+        except SpotifyException as e:
+            if e.http_status == 429:
+                retry_after = 2 ** (attempt + 1)          # 2, 4, 8 s
+                if getattr(e, "headers", None):
+                    retry_after = int(e.headers.get("Retry-After", retry_after))
+                time.sleep(min(retry_after, 30))           # cap at 30 s
+                continue
+            raise                                          # propagate non-429 immediately
+    raise SpotifyException(429, -1, "Rate limit exceeded after retries.", headers={})
 
 MIN_ENERGY = 0.40
 MIN_TEMPO = 85
@@ -41,7 +75,7 @@ def _bucket_genre(genre_string):
 
 def get_top_genres(sp, limit=3):
     try:
-        results = sp.current_user_top_artists(limit=20, time_range="medium_term")
+        results = _spotify_call(sp.current_user_top_artists, limit=20, time_range="medium_term")
         counts = {}
         for artist in results.get("items", []):
             for genre in artist.get("genres", []):
@@ -55,7 +89,7 @@ def get_top_genres(sp, limit=3):
             if fb not in sorted_genres:
                 sorted_genres.append(fb)
         return sorted_genres[:limit]
-    except Exception:
+    except (SpotifyException, Exception):
         return FALLBACK_GENRES[:limit]
 
 
@@ -63,9 +97,9 @@ def get_debug_data(sp):
     top_genres = get_top_genres(sp)
 
     artist_genres = {}
-    try:
-        for tr in ["medium_term", "long_term"]:
-            results = sp.current_user_top_artists(limit=20, time_range=tr)
+    for tr in ["medium_term", "long_term"]:
+        try:
+            results = _spotify_call(sp.current_user_top_artists, limit=20, time_range=tr)
             for artist in results.get("items", []):
                 if artist["id"] not in artist_genres:
                     buckets = set()
@@ -74,20 +108,23 @@ def get_debug_data(sp):
                         if b:
                             buckets.add(b)
                     artist_genres[artist["id"]] = list(buckets)
-    except Exception:
-        pass
+        except (SpotifyException, Exception):
+            pass  # Genre data is non-critical; degrade gracefully
 
     seen = set()
     weighted_tracks = []
+    last_tracks_error = None
     for time_range in ["short_term", "medium_term", "long_term"]:
         try:
-            results = sp.current_user_top_tracks(limit=20, time_range=time_range)
+            results = _spotify_call(sp.current_user_top_tracks, limit=20, time_range=time_range)
             for track in results.get("items", []):
                 if track["id"] not in seen:
                     seen.add(track["id"])
                     weighted_tracks.append((track, TIME_WEIGHTS[time_range], time_range))
-        except Exception:
-            pass
+        except SpotifyException as e:
+            last_tracks_error = e
+        except Exception as e:
+            last_tracks_error = e
 
     if not weighted_tracks:
         return None
@@ -95,9 +132,12 @@ def get_debug_data(sp):
     track_ids = [t["id"] for t, _, _ in weighted_tracks[:50]]
     features_list = None
     try:
-        features_list = sp.audio_features(track_ids)
+        features_list = _spotify_call(sp.audio_features, track_ids)
+    except SpotifyException as e:
+        # 403 is expected for apps created after Nov 2023 -- fall through to Deezer
+        features_list = None
     except Exception:
-        pass
+        features_list = None
 
     has_features = bool(features_list and any(f for f in features_list))
 
@@ -220,11 +260,11 @@ def get_debug_data(sp):
 
 
 def analyze_walkup_song(sp, vibe="auto", position="batter", genre=None, team=None):
-    # Build artist -> genre bucket map from top artists
+    # Build artist -> genre bucket map from top artists (non-critical)
     artist_genres = {}
-    try:
-        for tr in ["medium_term", "long_term"]:
-            results = sp.current_user_top_artists(limit=20, time_range=tr)
+    for tr in ["medium_term", "long_term"]:
+        try:
+            results = _spotify_call(sp.current_user_top_artists, limit=20, time_range=tr)
             for artist in results.get("items", []):
                 if artist["id"] not in artist_genres:
                     buckets = set()
@@ -233,32 +273,45 @@ def analyze_walkup_song(sp, vibe="auto", position="batter", genre=None, team=Non
                         if b:
                             buckets.add(b)
                     artist_genres[artist["id"]] = list(buckets)
-    except Exception:
-        pass
+        except (SpotifyException, Exception):
+            pass  # Genre data is non-critical; degrade gracefully
 
-    # Collect top tracks with time-range weights (recent = highest)
+    # Collect top tracks with time-range weights (critical -- surface errors)
     seen = set()
     weighted_tracks = []
+    last_tracks_error = None
     for time_range in ["short_term", "medium_term", "long_term"]:
         try:
-            results = sp.current_user_top_tracks(limit=20, time_range=time_range)
+            results = _spotify_call(sp.current_user_top_tracks, limit=20, time_range=time_range)
             for track in results.get("items", []):
                 if track["id"] not in seen:
                     seen.add(track["id"])
                     weighted_tracks.append((track, TIME_WEIGHTS[time_range]))
-        except Exception:
-            pass
+        except SpotifyException as e:
+            last_tracks_error = e
+        except Exception as e:
+            last_tracks_error = e
 
     if not weighted_tracks:
-        return {"error": "No listening data found. Listen more on Spotify and try again."}
+        if isinstance(last_tracks_error, SpotifyException):
+            msg = _SPOTIFY_ERRORS.get(
+                last_tracks_error.http_status,
+                f"Spotify error ({last_tracks_error.http_status}): {last_tracks_error.msg}"
+            )
+        else:
+            msg = "No listening data found. Listen more on Spotify and try again."
+        return {"error": msg}
 
     track_ids = [t["id"] for t, _ in weighted_tracks[:50]]
 
     features_list = None
     try:
-        features_list = sp.audio_features(track_ids)
+        features_list = _spotify_call(sp.audio_features, track_ids)
+    except SpotifyException:
+        # 403 expected for apps created after Nov 2023 -- fall through to Deezer
+        features_list = None
     except Exception:
-        pass
+        features_list = None
 
     team_genres = TEAMS_BY_ID[team]["genres"] if team and team in TEAMS_BY_ID else []
 
@@ -524,11 +577,15 @@ def guest_recommend(vibe="auto", position="batter", genre=None, team=None,
     for term in vibe_terms[:2]:
         q = f"{term} {genre_term}".strip()
         try:
-            results = sp.search(q=q, type="track", limit=20)
+            results = _spotify_call(sp.search, q=q, type="track", limit=20)
             for t in results["tracks"]["items"]:
                 if t["id"] not in seen_ids:
                     seen_ids.add(t["id"])
                     all_tracks.append(t)
+        except SpotifyException as e:
+            if e.http_status == 429:
+                break  # already retried inside _spotify_call; give up this search
+            continue
         except Exception:
             continue
 
