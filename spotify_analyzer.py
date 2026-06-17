@@ -1,3 +1,6 @@
+import os
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
 from mlb_teams import TEAMS_BY_ID
 from deezer_lookup import enrich_tracks, tempo_norm as deezer_tempo_norm
 
@@ -475,3 +478,110 @@ def _explain(winner, vibe, position, team_data):
         f"a track that {phrase}. "
         f"Walk out {pos_label} and own it."
     )
+
+
+# ---------------------------------------------------------------------------
+# Guest mode (no Spotify login) -- search catalog by quiz answers
+# ---------------------------------------------------------------------------
+
+_VIBE_SEARCH_TERMS = {
+    "intimidator":   ["aggressive hype anthem", "hard hitting intense"],
+    "crowd_pleaser": ["feel good party hit", "crowd anthem sing along"],
+    "closer":        ["locked in pump up clutch", "focused intense power"],
+    "auto":          ["pump up walkup anthem", "hype energy banger"],
+}
+
+_GENRE_SEARCH_TERMS = {
+    "hip-hop":    "rap hip-hop",
+    "rock":       "rock",
+    "pop":        "pop",
+    "r&b":        "r&b soul",
+    "country":    "country",
+    "electronic": "electronic edm",
+    "latin":      "latin",
+}
+
+
+def guest_recommend(vibe="auto", position="batter", genre=None, team=None,
+                    energy_pref="any", allow_explicit=True):
+    """Recommend a walk-up song without Spotify user auth, using catalog search + Deezer enrichment."""
+    try:
+        cc = SpotifyClientCredentials(
+            client_id=os.getenv("SPOTIPY_CLIENT_ID"),
+            client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
+        )
+        sp = spotipy.Spotify(client_credentials_manager=cc)
+    except Exception:
+        return {"error": "Could not connect to Spotify. Try again later."}
+
+    vibe_terms = _VIBE_SEARCH_TERMS.get(vibe, _VIBE_SEARCH_TERMS["auto"])
+    genre_term = _GENRE_SEARCH_TERMS.get(genre, "") if genre else ""
+
+    all_tracks = []
+    seen_ids = set()
+    for term in vibe_terms[:2]:
+        q = f"{term} {genre_term}".strip()
+        try:
+            results = sp.search(q=q, type="track", limit=20)
+            for t in results["tracks"]["items"]:
+                if t["id"] not in seen_ids:
+                    seen_ids.add(t["id"])
+                    all_tracks.append(t)
+        except Exception:
+            continue
+
+    if not all_tracks:
+        return {"error": "Couldn't find matching songs. Try different settings."}
+
+    if not allow_explicit:
+        filtered = [t for t in all_tracks if not t.get("explicit", False)]
+        if filtered:
+            all_tracks = filtered
+
+    enriched = enrich_tracks(all_tracks)
+
+    if energy_pref == "high":
+        hi = [t for t in enriched if t.get("deezer_energy") is not None and t["deezer_energy"] >= 0.55]
+        if hi:
+            enriched = hi
+    elif energy_pref == "mid":
+        mid = [t for t in enriched if t.get("deezer_energy") is None or 0.30 <= t["deezer_energy"] <= 0.70]
+        if mid:
+            enriched = mid
+
+    team_genres = TEAMS_BY_ID[team]["genres"] if team and team in TEAMS_BY_ID else []
+    track_genre_buckets = [genre] if genre else []
+
+    candidates = []
+    for t in enriched:
+        d_energy = t.get("deezer_energy")
+        d_tempo_n = deezer_tempo_norm(t.get("deezer_bpm")) if t.get("deezer_bpm") else None
+        score = _score_fallback(
+            vibe, 1.0, t.get("popularity", 50),
+            track_genre_buckets, genre, team_genres,
+            t.get("explicit", False), d_energy, d_tempo_n
+        )
+        candidates.append({"track": t, "features": None, "score": score, "track_genres": track_genre_buckets})
+
+    if not candidates:
+        return {"error": "Couldn't find a good match. Try different settings."}
+
+    candidates.sort(key=lambda x: x["score"], reverse=True)
+    winner = candidates[0]
+    track = winner["track"]
+    track_id = track["id"]
+    images = track["album"]["images"]
+    team_data = TEAMS_BY_ID.get(team) if team else None
+
+    return {
+        "name": track["name"],
+        "artist": track["artists"][0]["name"],
+        "album_art": images[0]["url"] if images else None,
+        "spotify_url": track["external_urls"]["spotify"],
+        "embed_url": f"https://open.spotify.com/embed/track/{track_id}?utm_source=generator&theme=0",
+        "explanation": _explain(winner, vibe, position, team_data),
+        "energy": (round(track.get("deezer_energy") * 100) if track.get("deezer_energy") is not None else None),
+        "tempo": (round(track.get("deezer_bpm")) if track.get("deezer_bpm") else None),
+        "team": team_data,
+        "guest_mode": True,
+    }

@@ -88,6 +88,22 @@
     font-weight: 600;
     color: #b3b3b3;
   }
+
+  .guest-note {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.8rem;
+    color: #666;
+    text-align: center;
+  }
+
+  .guest-note a {
+    color: #1DB954;
+    text-decoration: none;
+  }
 </style>
 {% endblock %}
 
@@ -138,9 +154,15 @@
     </iframe>
   </div>
 
+  {% if result.guest_mode %}
+  <div class="guest-note">
+    Based on your quiz answers. <a href="/login">Connect Spotify</a> for a song matched to your actual listening history.
+  </div>
+  {% endif %}
+
   <a href="{{ result.spotify_url }}" class="btn" target="_blank" rel="noopener noreferrer">
     Open in Spotify
   </a>
-  <a href="/quiz" class="btn btn-ghost">Try Again</a>
+  <a href="{{ '/quiz-guest' if result.guest_mode else '/quiz' }}" class="btn btn-ghost">Try Again</a>
 </div>
 {% endblock %}

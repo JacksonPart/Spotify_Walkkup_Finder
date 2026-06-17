@@ -4,7 +4,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from spotipy.cache_handler import FlaskSessionCacheHandler
 from dotenv import load_dotenv
-from spotify_analyzer import analyze_walkup_song, get_top_genres, get_debug_data, GENRE_DISPLAY_NAMES
+from spotify_analyzer import analyze_walkup_song, get_top_genres, get_debug_data, guest_recommend, GENRE_DISPLAY_NAMES
 from mlb_teams import MLB_TEAMS, logo_url
 
 load_dotenv()
@@ -88,6 +88,29 @@ def analyze():
     if "error" in result:
         return render_template("index.html", error=result["error"])
 
+    return render_template("result.html", result=result)
+
+
+@app.route("/quiz-guest")
+def quiz_guest():
+    all_genres = [{"key": k, "label": v} for k, v in GENRE_DISPLAY_NAMES.items()]
+    teams_with_logos = [{"id": t["id"], "name": t["name"], "logo": logo_url(t["id"])} for t in MLB_TEAMS]
+    return render_template("quiz.html", genre_options=all_genres, teams=teams_with_logos, guest=True)
+
+
+@app.route("/analyze-guest", methods=["POST"])
+def analyze_guest():
+    vibe = request.form.get("vibe", "auto")
+    position = request.form.get("position", "batter")
+    genre = request.form.get("genre") or None
+    team = request.form.get("team") or None
+    energy_pref = request.form.get("energy_pref", "any")
+    allow_explicit = request.form.get("allow_explicit", "yes") != "no"
+
+    result = guest_recommend(vibe=vibe, position=position, genre=genre, team=team,
+                             energy_pref=energy_pref, allow_explicit=allow_explicit)
+    if "error" in result:
+        return render_template("index.html", error=result["error"])
     return render_template("result.html", result=result)
 
 

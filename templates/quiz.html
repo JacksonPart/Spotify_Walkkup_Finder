@@ -124,6 +124,11 @@
   }
 
   #quiz-section { display: none; }
+  .quiz-always-on { display: block; }
+  .genre-grid-wide { grid-template-columns: repeat(4, 1fr); }
+  .option-grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .vibe-label { margin-top: 0.75rem; }
+  .btn-submit { margin-top: 1.25rem; }
 </style>
 {% endblock %}
 
@@ -132,15 +137,19 @@
   <div class="eyebrow">Almost there</div>
   <h2>Customize your walk-up song</h2>
 
-  <form action="/analyze" method="post" id="main-form">
-    <input type="hidden" name="vibe"     id="vibe-input"     value="auto">
-    <input type="hidden" name="position" id="position-input" value="batter">
-    <input type="hidden" name="genre"    id="genre-input"    value="">
-    <input type="hidden" name="team"     id="team-input"     value="">
+  <form action="{{ '/analyze-guest' if guest else '/analyze' }}" method="post" id="main-form">
+    <input type="hidden" name="vibe"         id="vibe-input"     value="{{ 'auto' if not guest else 'auto' }}">
+    <input type="hidden" name="position"     id="position-input" value="batter">
+    <input type="hidden" name="genre"        id="genre-input"    value="">
+    <input type="hidden" name="team"         id="team-input"     value="">
+    {% if guest %}
+    <input type="hidden" name="energy_pref"  id="energy-input"   value="any">
+    <input type="hidden" name="allow_explicit" id="explicit-input" value="yes">
+    {% endif %}
 
     <!-- Genre section -->
     <div class="section-label">Your sound</div>
-    <div class="genre-grid">
+    <div class="genre-grid{% if guest %} genre-grid-wide{% endif %}">
       {% for g in genre_options %}
       <label class="option-card">
         <input type="radio" name="genre_q" value="{{ g.key }}"
@@ -172,6 +181,7 @@
 
     <hr class="divider">
 
+    {% if not guest %}
     <!-- Scoring mode -->
     <div class="section-label">Scoring style</div>
     <div class="mode-toggle">
@@ -182,9 +192,10 @@
         Take the quiz
       </div>
     </div>
+    {% endif %}
 
     <!-- Quiz section (position + vibe) -->
-    <div id="quiz-section">
+    <div id="quiz-section" class="{% if guest %}quiz-always-on{% endif %}">
       <div class="section-label">Your position</div>
       <div class="option-grid">
         <label class="option-card">
@@ -214,7 +225,7 @@
         </label>
       </div>
 
-      <div class="section-label" style="margin-top: 0.75rem;">Your vibe</div>
+      <div class="section-label vibe-label">Your vibe</div>
       <div class="option-grid">
         <label class="option-card">
           <input type="radio" name="vibe_q" value="intimidator"
@@ -234,10 +245,56 @@
           <span class="option-label">The Closer</span>
           <span class="option-desc">Locked in. Focused.</span>
         </label>
+        {% if guest %}
+        <label class="option-card">
+          <input type="radio" name="vibe_q" value="auto"
+                 onchange="document.getElementById('vibe-input').value=this.value">
+          <span class="option-label">Best Match</span>
+          <span class="option-desc">All-around pump-up.</span>
+        </label>
+        {% endif %}
       </div>
+
+      {% if guest %}
+      <div class="section-label vibe-label">Energy level</div>
+      <div class="option-grid option-grid-3">
+        <label class="option-card">
+          <input type="radio" name="energy_q" value="high"
+                 onchange="document.getElementById('energy-input').value=this.value">
+          <span class="option-label">High</span>
+          <span class="option-desc">Loud. Intense.</span>
+        </label>
+        <label class="option-card">
+          <input type="radio" name="energy_q" value="mid"
+                 onchange="document.getElementById('energy-input').value=this.value">
+          <span class="option-label">Mid</span>
+          <span class="option-desc">Steady. Focused.</span>
+        </label>
+        <label class="option-card">
+          <input type="radio" name="energy_q" value="any"
+                 onchange="document.getElementById('energy-input').value=this.value" checked>
+          <span class="option-label">Any</span>
+          <span class="option-desc">No preference.</span>
+        </label>
+      </div>
+
+      <div class="section-label vibe-label">Explicit lyrics</div>
+      <div class="option-grid">
+        <label class="option-card">
+          <input type="radio" name="explicit_q" value="yes"
+                 onchange="document.getElementById('explicit-input').value=this.value" checked>
+          <span class="option-label">Fine with it</span>
+        </label>
+        <label class="option-card">
+          <input type="radio" name="explicit_q" value="no"
+                 onchange="document.getElementById('explicit-input').value=this.value">
+          <span class="option-label">Keep it clean</span>
+        </label>
+      </div>
+      {% endif %}
     </div>
 
-    <button type="submit" class="btn" style="margin-top: 1.25rem;">Find My Walk-Up Song</button>
+    <button type="submit" class="btn btn-submit">Find My Walk-Up Song</button>
   </form>
 </div>
 
