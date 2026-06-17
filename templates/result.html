@@ -186,13 +186,46 @@
     animation: woPlayerWalk 9s ease-in-out infinite;
   }
 
+  {% if result.position == 'outfielder' %}
   @keyframes woPlayerWalk {
     0%, 5%  { transform: translateX(-50%) translateY(0) scale(1); opacity: 0; }
     13%     { opacity: 1; transform: translateX(-50%) translateY(-6px) scale(1); }
-    72%     { transform: translateX(-50%) translateY(var(--walk-y, -138px)) scale(var(--walk-s, 0.27)); opacity: 0.9; }
-    83%     { transform: translateX(-50%) translateY(calc(var(--walk-y, -138px) - 15px)) scale(calc(var(--walk-s, 0.27) * 0.6)); opacity: 0; }
+    72%     { transform: translateX(-50%) translateY(-158px) scale(0.18); opacity: 0.9; }
+    83%     { transform: translateX(-50%) translateY(-173px) scale(0.108); opacity: 0; }
     100%    { transform: translateX(-50%) translateY(0) scale(1); opacity: 0; }
   }
+  {% elif result.position == 'pitcher' %}
+  @keyframes woPlayerWalk {
+    0%, 5%  { transform: translateX(-50%) translateY(0) scale(1); opacity: 0; }
+    13%     { opacity: 1; transform: translateX(-50%) translateY(-6px) scale(1); }
+    72%     { transform: translateX(-50%) translateY(-128px) scale(0.30); opacity: 0.9; }
+    83%     { transform: translateX(-50%) translateY(-143px) scale(0.18); opacity: 0; }
+    100%    { transform: translateX(-50%) translateY(0) scale(1); opacity: 0; }
+  }
+  {% elif result.position == 'infielder' %}
+  @keyframes woPlayerWalk {
+    0%, 5%  { transform: translateX(-50%) translateY(0) scale(1); opacity: 0; }
+    13%     { opacity: 1; transform: translateX(-50%) translateY(-6px) scale(1); }
+    72%     { transform: translateX(-50%) translateY(-140px) scale(0.25); opacity: 0.9; }
+    83%     { transform: translateX(-50%) translateY(-155px) scale(0.15); opacity: 0; }
+    100%    { transform: translateX(-50%) translateY(0) scale(1); opacity: 0; }
+  }
+  {% else %}
+  @keyframes woPlayerWalk {
+    0%, 5%  { transform: translateX(-50%) translateY(0) scale(1); opacity: 0; }
+    13%     { opacity: 1; transform: translateX(-50%) translateY(-6px) scale(1); }
+    72%     { transform: translateX(-50%) translateY(-138px) scale(0.27); opacity: 0.9; }
+    83%     { transform: translateX(-50%) translateY(-153px) scale(0.162); opacity: 0; }
+    100%    { transform: translateX(-50%) translateY(0) scale(1); opacity: 0; }
+  }
+  {% endif %}
+
+  .walkout-scene {
+    --tp: {{ result.team.primary   if result.team else '#1DB954' }};
+    --ts: {{ result.team.secondary if result.team else '#ffffff'  }};
+  }
+
+  .wo-jersey { fill: var(--tp); }
 
   .wo-leg-l {
     transform-box: fill-box;
@@ -279,38 +312,18 @@
   <div class="eyebrow">Your Walk-Up Song</div>
 
   {# --- Walk-out animation --- #}
-  {% set wo_primary   = result.team.primary   if result.team else '#1DB954' %}
-  {% set wo_secondary = result.team.secondary if result.team else '#ffffff'  %}
+  {% set wo_secondary = result.team.secondary if result.team else '#ffffff' %}
   {% if result.position == 'outfielder' %}
-    {% set walk_y = '-158px' %}{% set walk_s = '0.18' %}
-    {% set pos_cx = 50 %}{% set pos_cy = 10 %}
-    {% set pos_label = 'To the outfield' %}
+    {% set pos_cx = 50 %}{% set pos_cy = 10 %}{% set pos_label = 'To the outfield' %}
   {% elif result.position == 'pitcher' %}
-    {% set walk_y = '-128px' %}{% set walk_s = '0.30' %}
-    {% set pos_cx = 50 %}{% set pos_cy = 46 %}
-    {% set pos_label = 'Taking the mound' %}
+    {% set pos_cx = 50 %}{% set pos_cy = 46 %}{% set pos_label = 'Taking the mound' %}
   {% elif result.position == 'catcher' %}
-    {% set walk_y = '-138px' %}{% set walk_s = '0.27' %}
-    {% set pos_cx = 50 %}{% set pos_cy = 76 %}
-    {% set pos_label = 'Behind the plate' %}
+    {% set pos_cx = 50 %}{% set pos_cy = 76 %}{% set pos_label = 'Behind the plate' %}
   {% elif result.position == 'infielder' %}
-    {% set walk_y = '-140px' %}{% set walk_s = '0.25' %}
-    {% set pos_cx = 50 %}{% set pos_cy = 26 %}
-    {% set pos_label = 'In the infield' %}
+    {% set pos_cx = 50 %}{% set pos_cy = 26 %}{% set pos_label = 'In the infield' %}
   {% else %}
-    {% set walk_y = '-138px' %}{% set walk_s = '0.27' %}
-    {% set pos_cx = 50 %}{% set pos_cy = 76 %}
-    {% set pos_label = 'Stepping to the plate' %}
+    {% set pos_cx = 50 %}{% set pos_cy = 76 %}{% set pos_label = 'Stepping to the plate' %}
   {% endif %}
-
-  <style>
-    .walkout-scene {
-      --walk-y: {{ walk_y }};
-      --walk-s: {{ walk_s }};
-      --tp: {{ wo_primary }};
-      --ts: {{ wo_secondary }};
-    }
-  </style>
   <div class="walkout-scene">
 
     <!-- Field opening oval -->
@@ -353,10 +366,10 @@
       <!-- Head -->
       <ellipse cx="24" cy="10" rx="8" ry="9" fill="#0e0e0e"/>
       <!-- Jersey body -->
-      <path d="M13,19 C11,22 10,26 10,30 L10,58 L38,58 L38,30 C38,26 37,22 35,19 Z" fill="var(--tp)"/>
+      <path class="wo-jersey" d="M13,19 C11,22 10,26 10,30 L10,58 L38,58 L38,30 C38,26 37,22 35,19 Z"/>
       <!-- Arms (swing with stride) -->
-      <path class="wo-arm-l" d="M13,21 L5,42 L11,44 L17,26 Z" fill="var(--tp)"/>
-      <path class="wo-arm-r" d="M35,21 L43,42 L37,44 L31,26 Z" fill="var(--tp)"/>
+      <path class="wo-arm-l wo-jersey" d="M13,21 L5,42 L11,44 L17,26 Z"/>
+      <path class="wo-arm-r wo-jersey" d="M35,21 L43,42 L37,44 L31,26 Z"/>
       <!-- Legs (stride) -->
       <rect class="wo-leg-l" x="11" y="58" width="11" height="34" rx="5" fill="#181818"/>
       <rect class="wo-leg-r" x="26" y="58" width="11" height="34" rx="5" fill="#181818"/>
