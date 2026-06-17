@@ -5,6 +5,7 @@ from spotipy.oauth2 import SpotifyClientCredentials
 from spotipy.exceptions import SpotifyException
 from mlb_teams import TEAMS_BY_ID
 from deezer_lookup import enrich_tracks, tempo_norm as deezer_tempo_norm
+import reccobeats_lookup as rb_lookup
 
 # User-facing messages for each HTTP status the Spotify API can return
 _SPOTIFY_ERRORS = {
@@ -63,6 +64,43 @@ GENRE_DISPLAY_NAMES = {
 }
 
 FALLBACK_GENRES = ["hip-hop", "rock", "pop"]
+
+# Raw Spotify genre strings that strongly correlate with each vibe.
+# Partial substring matching -- "trap" matches "trap soul", "trap metal", etc.
+_GENRE_VIBE_MAP = {
+    "intimidator": [
+        "metal", "drill", "trap", "gangsta", "hard rock", "hardcore",
+        "heavy", "industrial", "punk", "grunge", "trap metal",
+        "aggressive", "bass music", "death", "thrash", "rage",
+    ],
+    "crowd_pleaser": [
+        "pop", "edm", "dance", "funk", "house", "disco", "tropical",
+        "club", "electro", "reggaeton", "latin pop", "k-pop", "bubblegum",
+        "feel good", "party",
+    ],
+    "closer": [
+        "indie", "alternative", "lo-fi", "ambient", "folk",
+        "singer-songwriter", "chill", "downtempo", "dream pop",
+        "chamber", "bedroom", "emo", "post-rock",
+    ],
+}
+
+
+def _genre_vibe_bonus(raw_genres, vibe):
+    """Return 0.0-0.15 score bonus based on how well raw artist genre strings match a vibe.
+
+    Each keyword match in _GENRE_VIBE_MAP adds 0.075, capped at two matches (0.15 max).
+    'auto' vibe gets no bonus -- it should be purely data-driven.
+    """
+    targets = _GENRE_VIBE_MAP.get(vibe, [])
+    if not targets or not raw_genres:
+        return 0.0
+    matches = sum(
+        1 for g in raw_genres
+        for kw in targets
+        if kw in g.lower()
+    )
+    return min(matches, 2) * 0.075
 
 
 def _bucket_genre(genre_string):
@@ -260,19 +298,24 @@ def get_debug_data(sp):
 
 
 def analyze_walkup_song(sp, vibe="auto", position="batter", genre=None, team=None):
-    # Build artist -> genre bucket map from top artists (non-critical)
+    # Build artist -> genre maps from top artists across all time ranges (non-critical).
+    # artist_genres: bucketed labels used for genre/team boost
+    # raw_artist_genres: raw Spotify strings used for vibe bonus
     artist_genres = {}
-    for tr in ["medium_term", "long_term"]:
+    raw_artist_genres = {}
+    for tr in ["short_term", "medium_term", "long_term"]:
         try:
-            results = _spotify_call(sp.current_user_top_artists, limit=20, time_range=tr)
+            results = _spotify_call(sp.current_user_top_artists, limit=50, time_range=tr)
             for artist in results.get("items", []):
                 if artist["id"] not in artist_genres:
                     buckets = set()
-                    for g in artist.get("genres", []):
+                    raw = artist.get("genres", [])
+                    for g in raw:
                         b = _bucket_genre(g)
                         if b:
                             buckets.add(b)
                     artist_genres[artist["id"]] = list(buckets)
+                    raw_artist_genres[artist["id"]] = raw
         except (SpotifyException, Exception):
             pass  # Genre data is non-critical; degrade gracefully
 
@@ -327,7 +370,8 @@ def analyze_walkup_song(sp, vibe="auto", position="batter", genre=None, team=Non
             )
     else:
         raw_tracks = [t for t, _ in weighted_tracks]
-        enriched = enrich_tracks(raw_tracks)
+        rb_lookup.enrich_tracks(raw_tracks)   # ReccoBeats: energy, valence, danceability, tempo
+        enriched = enrich_tracks(raw_tracks)  # Deezer: BPM/gain as secondary fallback
         enriched_map = {t["id"]: t for t in enriched}
 
         candidates = []
@@ -335,9 +379,21 @@ def analyze_walkup_song(sp, vibe="auto", position="batter", genre=None, team=Non
             et = enriched_map.get(t["id"], t)
             artist_id = et["artists"][0]["id"]
             track_genres = artist_genres.get(artist_id, [])
+            raw_genres = raw_artist_genres.get(artist_id, [])
+            vibe_bonus = _genre_vibe_bonus(raw_genres, vibe)
+
             d_energy = et.get("deezer_energy")
             d_tempo_n = deezer_tempo_norm(et.get("deezer_bpm")) if et.get("deezer_bpm") else None
-            score = _score_fallback(vibe, w, et.get("popularity", 50), track_genres, genre, team_genres, et.get("explicit", False), d_energy, d_tempo_n)
+
+            score = _score_fallback(
+                vibe, w, et.get("popularity", 50), track_genres, genre, team_genres,
+                et.get("explicit", False), d_energy, d_tempo_n,
+                rb_energy=et.get("rb_energy"),
+                rb_valence=et.get("rb_valence"),
+                rb_danceability=et.get("rb_danceability"),
+                rb_tempo_n=et.get("rb_tempo_n"),
+                genre_vibe_bonus=vibe_bonus,
+            )
             candidates.append({"track": et, "features": None, "score": score, "track_genres": track_genres})
 
     if not candidates:
@@ -352,6 +408,9 @@ def analyze_walkup_song(sp, vibe="auto", position="batter", genre=None, team=Non
 
     team_data = TEAMS_BY_ID.get(team) if team else None
 
+    rb_energy = track.get("rb_energy")
+    rb_tempo = track.get("rb_tempo")
+
     return {
         "name": track["name"],
         "artist": track["artists"][0]["name"],
@@ -359,10 +418,18 @@ def analyze_walkup_song(sp, vibe="auto", position="batter", genre=None, team=Non
         "spotify_url": track["external_urls"]["spotify"],
         "embed_url": f"https://open.spotify.com/embed/track/{track_id}?utm_source=generator&theme=0",
         "explanation": _explain(winner, vibe, position, team_data),
-        "energy": (round(features["energy"] * 100) if features
-                   else (round(track.get("deezer_energy") * 100) if track.get("deezer_energy") is not None else None)),
-        "tempo": (round(features["tempo"]) if features
-                  else (round(track.get("deezer_bpm")) if track.get("deezer_bpm") else None)),
+        "energy": (
+            round(features["energy"] * 100) if features
+            else round(rb_energy * 100) if rb_energy is not None
+            else round(track.get("deezer_energy") * 100) if track.get("deezer_energy") is not None
+            else None
+        ),
+        "tempo": (
+            round(features["tempo"]) if features
+            else round(rb_tempo) if rb_tempo
+            else round(track.get("deezer_bpm")) if track.get("deezer_bpm")
+            else None
+        ),
         "team": team_data,
         "position": position,
         "vibe": vibe,
@@ -418,44 +485,57 @@ def _score(features, vibe, position, time_weight, popularity, selected_genre, tr
 
 
 def _score_fallback(vibe, time_weight, popularity, track_genre_buckets, selected_genre,
-                    team_genres, explicit, deezer_energy=None, deezer_tempo_n=None):
+                    team_genres, explicit, deezer_energy=None, deezer_tempo_n=None,
+                    rb_energy=None, rb_valence=None, rb_danceability=None, rb_tempo_n=None,
+                    genre_vibe_bonus=0.0):
     """
     Scoring when Spotify audio features are unavailable.
-    Uses Deezer gain (energy proxy) + BPM when available, falls back to genre/explicit/popularity.
+
+    Priority chain:
+      1. ReccoBeats (energy + valence + danceability) -- full vibe formula, same weights as _score()
+      2. Deezer (energy + tempo) -- partial formula
+      3. Genre/popularity proxy -- pure fallback
+
+    genre_vibe_bonus (0-0.15) is added on top regardless of which data tier is used.
     """
-    pop = popularity / 100.0
+    pop_n = popularity / 100.0
 
-    aggressive = any(g in track_genre_buckets for g in ["hip-hop", "rock", "electronic"])
-    feel_good  = any(g in track_genre_buckets for g in ["pop", "country", "r&b", "latin"])
+    # --- Tier 1: ReccoBeats -- full feature set ---
+    if rb_energy is not None and rb_valence is not None and rb_danceability is not None:
+        tempo_n = rb_tempo_n if rb_tempo_n is not None else (deezer_tempo_n or 0.5)
+        if vibe == "intimidator":
+            base = rb_energy * 0.50 + (1 - rb_valence) * 0.30 + tempo_n * 0.15 + pop_n * 0.05
+        elif vibe == "crowd_pleaser":
+            base = rb_valence * 0.30 + rb_danceability * 0.25 + pop_n * 0.25 + rb_energy * 0.15 + tempo_n * 0.05
+        elif vibe == "closer":
+            base = tempo_n * 0.50 + rb_energy * 0.40 + pop_n * 0.05 + (1 - rb_valence) * 0.05
+        else:  # auto
+            base = rb_energy * 0.55 + tempo_n * 0.30 + rb_danceability * 0.10 + pop_n * 0.05
 
-    # Use Deezer data when available, otherwise fall back to genre proxies
-    energy  = deezer_energy  if deezer_energy  is not None else (0.70 if aggressive else 0.45)
-    tempo_n = deezer_tempo_n if deezer_tempo_n is not None else (0.60 if aggressive else 0.40)
+    # --- Tier 2: Deezer -- energy + tempo only ---
+    else:
+        aggressive = any(g in track_genre_buckets for g in ["hip-hop", "rock", "electronic"])
+        feel_good  = any(g in track_genre_buckets for g in ["pop", "country", "r&b", "latin"])
 
-    if vibe == "intimidator":
-        base = (energy * 0.50
-                + tempo_n * 0.20
-                + (0.20 if explicit else 0.0)
-                + (0.05 if aggressive else -0.10)
-                + pop * 0.05)
-    elif vibe == "crowd_pleaser":
-        base = (energy * 0.20
-                + tempo_n * 0.10
-                + (0.25 if feel_good else 0.0)
-                + pop * 0.35
-                + (-0.10 if explicit else 0.0))
-    elif vibe == "closer":
-        base = (tempo_n * 0.45
-                + energy * 0.35
-                + pop * 0.15
-                + (0.05 if aggressive else 0.0))
-    else:  # auto
-        base = (energy * 0.50
-                + tempo_n * 0.25
-                + pop * 0.15
-                + (0.10 if explicit else 0.0))
+        energy  = deezer_energy  if deezer_energy  is not None else (0.70 if aggressive else 0.45)
+        tempo_n = deezer_tempo_n if deezer_tempo_n is not None else (0.60 if aggressive else 0.40)
 
-    boost = 0.0
+        if vibe == "intimidator":
+            base = (energy * 0.50 + tempo_n * 0.20
+                    + (0.20 if explicit else 0.0)
+                    + (0.05 if aggressive else -0.10)
+                    + pop_n * 0.05)
+        elif vibe == "crowd_pleaser":
+            base = (energy * 0.20 + tempo_n * 0.10
+                    + (0.25 if feel_good else 0.0)
+                    + pop_n * 0.35
+                    + (-0.10 if explicit else 0.0))
+        elif vibe == "closer":
+            base = tempo_n * 0.45 + energy * 0.35 + pop_n * 0.15 + (0.05 if aggressive else 0.0)
+        else:  # auto
+            base = energy * 0.50 + tempo_n * 0.25 + pop_n * 0.15 + (0.10 if explicit else 0.0)
+
+    boost = genre_vibe_bonus
     if selected_genre and selected_genre in track_genre_buckets:
         boost += 0.35
     if team_genres and any(g in track_genre_buckets for g in team_genres):
@@ -508,6 +588,18 @@ def _explain(winner, vibe, position, team_data):
         return (
             f'"{name}" by {artist} is your walk-up song -- '
             f"{energy_pct}% energy, {bpm} BPM, a track that {phrase}."
+            f"{pop_note}{city_note} "
+            f"Walk out {pos_label} and own it."
+        )
+
+    rb_energy = track.get("rb_energy")
+    rb_tempo = track.get("rb_tempo")
+    if rb_energy is not None:
+        energy_pct = round(rb_energy * 100)
+        bpm_note = f", {round(rb_tempo)} BPM" if rb_tempo else ""
+        return (
+            f'"{name}" by {artist} is your walk-up song -- '
+            f"{energy_pct}% energy{bpm_note}, a track that {phrase}."
             f"{pop_note}{city_note} "
             f"Walk out {pos_label} and own it."
         )
@@ -597,14 +689,19 @@ def guest_recommend(vibe="auto", position="batter", genre=None, team=None,
         if filtered:
             all_tracks = filtered
 
-    enriched = enrich_tracks(all_tracks)
+    rb_lookup.enrich_tracks(all_tracks)   # ReccoBeats first
+    enriched = enrich_tracks(all_tracks)  # Deezer fills gaps
+
+    # Energy filter: prefer ReccoBeats energy, fall back to Deezer
+    def _energy(t):
+        return t.get("rb_energy") if t.get("rb_energy") is not None else t.get("deezer_energy")
 
     if energy_pref == "high":
-        hi = [t for t in enriched if t.get("deezer_energy") is not None and t["deezer_energy"] >= 0.55]
+        hi = [t for t in enriched if _energy(t) is not None and _energy(t) >= 0.55]
         if hi:
             enriched = hi
     elif energy_pref == "mid":
-        mid = [t for t in enriched if t.get("deezer_energy") is None or 0.30 <= t["deezer_energy"] <= 0.70]
+        mid = [t for t in enriched if _energy(t) is None or 0.30 <= _energy(t) <= 0.70]
         if mid:
             enriched = mid
 
@@ -618,7 +715,11 @@ def guest_recommend(vibe="auto", position="batter", genre=None, team=None,
         score = _score_fallback(
             vibe, 1.0, t.get("popularity", 50),
             track_genre_buckets, genre, team_genres,
-            t.get("explicit", False), d_energy, d_tempo_n
+            t.get("explicit", False), d_energy, d_tempo_n,
+            rb_energy=t.get("rb_energy"),
+            rb_valence=t.get("rb_valence"),
+            rb_danceability=t.get("rb_danceability"),
+            rb_tempo_n=t.get("rb_tempo_n"),
         )
         candidates.append({"track": t, "features": None, "score": score, "track_genres": track_genre_buckets})
 
@@ -632,6 +733,9 @@ def guest_recommend(vibe="auto", position="batter", genre=None, team=None,
     images = track["album"]["images"]
     team_data = TEAMS_BY_ID.get(team) if team else None
 
+    rb_energy = track.get("rb_energy")
+    rb_tempo = track.get("rb_tempo")
+
     return {
         "name": track["name"],
         "artist": track["artists"][0]["name"],
@@ -639,8 +743,16 @@ def guest_recommend(vibe="auto", position="batter", genre=None, team=None,
         "spotify_url": track["external_urls"]["spotify"],
         "embed_url": f"https://open.spotify.com/embed/track/{track_id}?utm_source=generator&theme=0",
         "explanation": _explain(winner, vibe, position, team_data),
-        "energy": (round(track.get("deezer_energy") * 100) if track.get("deezer_energy") is not None else None),
-        "tempo": (round(track.get("deezer_bpm")) if track.get("deezer_bpm") else None),
+        "energy": (
+            round(rb_energy * 100) if rb_energy is not None
+            else round(track.get("deezer_energy") * 100) if track.get("deezer_energy") is not None
+            else None
+        ),
+        "tempo": (
+            round(rb_tempo) if rb_tempo
+            else round(track.get("deezer_bpm")) if track.get("deezer_bpm")
+            else None
+        ),
         "team": team_data,
         "position": position,
         "vibe": vibe,
