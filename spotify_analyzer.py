@@ -311,6 +311,8 @@ def analyze_walkup_song(sp, vibe="auto", position="batter", genre=None, team=Non
         "tempo": (round(features["tempo"]) if features
                   else (round(track.get("deezer_bpm")) if track.get("deezer_bpm") else None)),
         "team": team_data,
+        "position": position,
+        "vibe": vibe,
     }
 
 
@@ -583,5 +585,7 @@ def guest_recommend(vibe="auto", position="batter", genre=None, team=None,
         "energy": (round(track.get("deezer_energy") * 100) if track.get("deezer_energy") is not None else None),
         "tempo": (round(track.get("deezer_bpm")) if track.get("deezer_bpm") else None),
         "team": team_data,
+        "position": position,
+        "vibe": vibe,
         "guest_mode": True,
     }

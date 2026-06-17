@@ -104,12 +104,265 @@
     color: #1DB954;
     text-decoration: none;
   }
+
+  /* Walk-out animation */
+  .walkout-scene {
+    position: relative;
+    width: 100%;
+    height: 240px;
+    background: #050505;
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+    border: 1px solid #1a1a1a;
+  }
+
+  .wo-field {
+    position: absolute;
+    left: 50%;
+    top: 36%;
+    width: 150px;
+    height: 105px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at 50% 55%, #2a5e2a 0%, #183818 55%, #0b220b 100%);
+    transform: translate(-50%, -50%) scale(0.4);
+    animation: woFieldExpand 9s ease-in-out infinite;
+    box-shadow: 0 0 50px 10px rgba(20, 90, 20, 0.2);
+  }
+
+  @keyframes woFieldExpand {
+    0%          { transform: translate(-50%, -50%) scale(0.35); opacity: 0; }
+    10%         { opacity: 1; transform: translate(-50%, -50%) scale(0.5); }
+    72%         { transform: translate(-50%, -50%) scale(2.9); opacity: 1; }
+    87%         { transform: translate(-50%, -50%) scale(3.3); opacity: 0; }
+    100%        { transform: translate(-50%, -50%) scale(0.35); opacity: 0; }
+  }
+
+  .wo-diamond-wrap {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: woDiamondFade 9s ease-in-out infinite;
+  }
+
+  @keyframes woDiamondFade {
+    0%, 8%  { opacity: 0; }
+    20%     { opacity: 1; }
+    73%     { opacity: 1; }
+    86%     { opacity: 0; }
+    100%    { opacity: 0; }
+  }
+
+  .wo-vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 36%, transparent 18%, rgba(5,5,5,0.55) 48%, rgba(5,5,5,0.94) 100%);
+    z-index: 2;
+    pointer-events: none;
+    border-radius: 16px;
+  }
+
+  .wo-player {
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    animation: woPlayerWalk 9s ease-in-out infinite;
+  }
+
+  @keyframes woPlayerWalk {
+    0%, 5%  { transform: translateX(-50%) translateY(0) scale(1); opacity: 0; }
+    13%     { opacity: 1; transform: translateX(-50%) translateY(-6px) scale(1); }
+    72%     { transform: translateX(-50%) translateY(var(--walk-y, -138px)) scale(var(--walk-s, 0.27)); opacity: 0.9; }
+    83%     { transform: translateX(-50%) translateY(calc(var(--walk-y, -138px) - 15px)) scale(calc(var(--walk-s, 0.27) * 0.6)); opacity: 0; }
+    100%    { transform: translateX(-50%) translateY(0) scale(1); opacity: 0; }
+  }
+
+  .wo-leg-l {
+    transform-box: fill-box;
+    transform-origin: top center;
+    animation: woLegL 0.55s ease-in-out infinite alternate;
+  }
+  .wo-leg-r {
+    transform-box: fill-box;
+    transform-origin: top center;
+    animation: woLegR 0.55s ease-in-out infinite alternate;
+  }
+  .wo-arm-l {
+    transform-box: fill-box;
+    transform-origin: top center;
+    animation: woArmL 0.55s ease-in-out infinite alternate;
+  }
+  .wo-arm-r {
+    transform-box: fill-box;
+    transform-origin: top center;
+    animation: woArmR 0.55s ease-in-out infinite alternate;
+  }
+
+  @keyframes woLegL { 0% { transform: rotate(22deg); }  100% { transform: rotate(-22deg); } }
+  @keyframes woLegR { 0% { transform: rotate(-22deg); } 100% { transform: rotate(22deg); } }
+  @keyframes woArmL { 0% { transform: rotate(-14deg); } 100% { transform: rotate(14deg); } }
+  @keyframes woArmR { 0% { transform: rotate(14deg); }  100% { transform: rotate(-14deg); } }
+
+  .wo-pos-dot {
+    animation: woPosDot 9s ease-in-out infinite;
+  }
+  @keyframes woPosDot {
+    0%, 58%  { opacity: 0; }
+    68%      { opacity: 1; }
+    78%      { opacity: 1; }
+    87%      { opacity: 0; }
+    100%     { opacity: 0; }
+  }
+
+  .wo-team-logo {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 34px;
+    height: 34px;
+    z-index: 4;
+    object-fit: contain;
+    opacity: 0;
+    animation: woLogoFade 9s ease-in-out infinite;
+  }
+  @keyframes woLogoFade {
+    0%, 8%  { opacity: 0; }
+    18%     { opacity: 0.65; }
+    75%     { opacity: 0.65; }
+    87%     { opacity: 0; }
+    100%    { opacity: 0; }
+  }
+
+  .wo-label {
+    position: absolute;
+    bottom: 10px;
+    left: 0; right: 0;
+    text-align: center;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    z-index: 4;
+    opacity: 0;
+    animation: woLabelFade 9s ease-in-out infinite;
+  }
+  @keyframes woLabelFade {
+    0%, 58%  { opacity: 0; }
+    68%      { opacity: 1; }
+    80%      { opacity: 1; }
+    87%      { opacity: 0; }
+    100%     { opacity: 0; }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="card">
   <div class="eyebrow">Your Walk-Up Song</div>
+
+  {# --- Walk-out animation --- #}
+  {% set wo_primary   = result.team.primary   if result.team else '#1DB954' %}
+  {% set wo_secondary = result.team.secondary if result.team else '#ffffff'  %}
+  {% if result.position == 'outfielder' %}
+    {% set walk_y = '-158px' %}{% set walk_s = '0.18' %}
+    {% set pos_cx = 50 %}{% set pos_cy = 10 %}
+    {% set pos_label = 'To the outfield' %}
+  {% elif result.position == 'pitcher' %}
+    {% set walk_y = '-128px' %}{% set walk_s = '0.30' %}
+    {% set pos_cx = 50 %}{% set pos_cy = 46 %}
+    {% set pos_label = 'Taking the mound' %}
+  {% elif result.position == 'catcher' %}
+    {% set walk_y = '-138px' %}{% set walk_s = '0.27' %}
+    {% set pos_cx = 50 %}{% set pos_cy = 76 %}
+    {% set pos_label = 'Behind the plate' %}
+  {% elif result.position == 'infielder' %}
+    {% set walk_y = '-140px' %}{% set walk_s = '0.25' %}
+    {% set pos_cx = 50 %}{% set pos_cy = 26 %}
+    {% set pos_label = 'In the infield' %}
+  {% else %}
+    {% set walk_y = '-138px' %}{% set walk_s = '0.27' %}
+    {% set pos_cx = 50 %}{% set pos_cy = 76 %}
+    {% set pos_label = 'Stepping to the plate' %}
+  {% endif %}
+
+  <style>
+    .walkout-scene {
+      --walk-y: {{ walk_y }};
+      --walk-s: {{ walk_s }};
+      --tp: {{ wo_primary }};
+      --ts: {{ wo_secondary }};
+    }
+  </style>
+  <div class="walkout-scene">
+
+    <!-- Field opening oval -->
+    <div class="wo-field">
+      <div class="wo-diamond-wrap">
+        <svg viewBox="0 0 100 85" width="100%" height="100%">
+          <defs>
+            <filter id="wo-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          <!-- Infield dirt circle -->
+          <circle cx="50" cy="47" r="26" fill="rgba(160,100,40,0.2)"/>
+          <!-- Baselines -->
+          <line x1="50" y1="78" x2="90" y2="47" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+          <line x1="50" y1="78" x2="10" y2="47" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+          <line x1="10" y1="47" x2="50" y2="16" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+          <line x1="90" y1="47" x2="50" y2="16" stroke="rgba(255,255,255,0.22)" stroke-width="1"/>
+          <!-- Bases -->
+          <rect x="47" y="13" width="6" height="6" rx="1" fill="white" opacity="0.65" transform="rotate(45 50 16)"/>
+          <rect x="87" y="44" width="6" height="6" rx="1" fill="white" opacity="0.65" transform="rotate(45 90 47)"/>
+          <rect x="7"  y="44" width="6" height="6" rx="1" fill="white" opacity="0.65" transform="rotate(45 10 47)"/>
+          <!-- Home plate -->
+          <polygon points="50,82 46,77 46,72 54,72 54,77" fill="white" opacity="0.72"/>
+          <!-- Pitcher mound -->
+          <circle cx="50" cy="47" r="3.5" fill="rgba(160,100,40,0.45)" stroke="rgba(255,255,255,0.18)" stroke-width="0.5"/>
+          <!-- Position marker (glows at the right moment) -->
+          <circle class="wo-pos-dot" cx="{{ pos_cx }}" cy="{{ pos_cy }}" r="4.5"
+                  fill="{{ wo_secondary }}" filter="url(#wo-glow)"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Tunnel vignette -->
+    <div class="wo-vignette"></div>
+
+    <!-- Player silhouette (from behind, jersey in team color) -->
+    <svg class="wo-player" width="48" height="96" viewBox="0 0 48 96">
+      <!-- Head -->
+      <ellipse cx="24" cy="10" rx="8" ry="9" fill="#0e0e0e"/>
+      <!-- Jersey body -->
+      <path d="M13,19 C11,22 10,26 10,30 L10,58 L38,58 L38,30 C38,26 37,22 35,19 Z" fill="var(--tp)"/>
+      <!-- Arms (swing with stride) -->
+      <path class="wo-arm-l" d="M13,21 L5,42 L11,44 L17,26 Z" fill="var(--tp)"/>
+      <path class="wo-arm-r" d="M35,21 L43,42 L37,44 L31,26 Z" fill="var(--tp)"/>
+      <!-- Legs (stride) -->
+      <rect class="wo-leg-l" x="11" y="58" width="11" height="34" rx="5" fill="#181818"/>
+      <rect class="wo-leg-r" x="26" y="58" width="11" height="34" rx="5" fill="#181818"/>
+      <!-- Cleats -->
+      <ellipse cx="16" cy="93" rx="7" ry="3" fill="#080808"/>
+      <ellipse cx="32" cy="93" rx="7" ry="3" fill="#080808"/>
+    </svg>
+
+    <!-- Team logo (top-right corner) -->
+    {% if result.team %}
+    <img class="wo-team-logo"
+         src="https://a.espncdn.com/i/teamlogos/mlb/500/{{ result.team.id }}.png"
+         alt="{{ result.team.name }}"
+         onerror="this.style.display='none'">
+    {% endif %}
+
+    <!-- Position label (fades in at the end) -->
+    <div class="wo-label">{{ pos_label }}</div>
+  </div>
 
   {% if result.album_art %}
   <img src="{{ result.album_art }}" alt="{{ result.name }} album art" class="album-art">
